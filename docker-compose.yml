@@ -1,0 +1,117 @@
+services:
+  oracle:
+    # Using the popular community image for Oracle 23c Free (easier setup than official images)
+    image: gvenzl/oracle-free:latest
+    container_name: container_oracle
+    restart: unless-stopped
+    # Oracle requires more shared memory than Postgres. 
+    # If this fails, ensure your Docker Desktop/Host has 4GB+ RAM allocated.
+    shm_size: 2gb
+    environment:
+      # Sets the password for SYS and SYSTEM (the "root" users of Oracle)
+      ORACLE_PASSWORD: "chanthorn@sp"
+      # Creates a specific user/schema for your work (Oracle usernames usually can't be emails)
+      APP_USER: RAC_ADMIN
+      APP_USER_PASSWORD: "chanthorn@sp"
+      ORACLE_DATABASE: racdb
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+    ports:
+      - "1521:1521" # Standard Oracle port
+    networks:
+      - db
+
+  #
+
+  # MySQL Service
+  mysql:
+    image: mysql:8.0
+    container_name: container_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "root"
+      MYSQL_DATABASE: racdb
+      MYSQL_USER: rac_admin
+      MYSQL_PASSWORD: "chanthorn@sp.dev"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - db
+
+  # Microsoft SQL Server Service
+  mssql:
+    # Official Microsoft SQL Server 2022 image (Developer Edition is free for dev/lab use)
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: container_mssql
+    restart: unless-stopped
+    # MSSQL needs approx 2GB RAM minimum to run stable
+    mem_limit: 4096m
+    environment:
+      # CRITICAL: You must accept the End User License Agreement
+      ACCEPT_EULA: "Y"
+      # Password must have: Uppercase, Lowercase, Numbers, and Symbols
+      MSSQL_SA_PASSWORD: "Chanthorn@sp2025"
+      MSSQL_PID: "Developer" # Uses the free Developer edition license
+    volumes:
+      - mssql_data:/var/opt/mssql
+    ports:
+      - "1533:1433" # Using 1533 (host) -> 1433 (container) due to Hyper-V port exclusion
+    networks:
+      - db
+
+  cloudbeaver:
+    # Replaces pgAdmin (which only works for Postgres). 
+    # CloudBeaver is a web GUI that supports Oracle, MySQL, Postgres, etc.
+    image: dbeaver/cloudbeaver:latest
+    container_name: container_cloudbeaver
+    restart: always
+    ports:
+      - "8081:8978" # Map host 8081 to container 8978
+    depends_on:
+      - oracle
+    volumes:
+      - cloudbeaver_data:/opt/cloudbeaver/workspace
+    networks:
+      - db
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: container_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: "root"
+    ports:
+      - "8082:80"
+    depends_on:
+      - mysql
+    networks:
+      - db
+
+networks:
+  db:
+    driver: bridge
+
+volumes:
+  oracle_data:
+  mysql_data:
+  cloudbeaver_data:
+  mssql_data:
+  phpmyadmin_data:
+
+    # How to run with only some services:
+    # # Run only SQL Server
+    # docker-compose up -d mssql
+
+    # # Run only MySQL
+    # docker-compose up -d mysql
+
+    # # Run multiple specific services
+    # docker-compose up -d mysql phpmyadmin
+
+    # # Run SQL Server with its dependencies (if any)
+    # docker-compose up -d --no-deps mssql
